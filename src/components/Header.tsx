@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Image as ImageIcon, Layers, Zap, Info } from 'lucide-react';
+import { Sparkles, Image as ImageIcon, Layers, Zap, Info, ShoppingBag, Wand2 } from 'lucide-react';
 
 interface HeaderProps {
   isSidebarOpen: boolean;
@@ -7,6 +7,8 @@ interface HeaderProps {
   activeSidebarTab: 'chat' | 'library';
   setActiveSidebarTab: (tab: 'chat' | 'library') => void;
   libraryCount: number;
+  activeView: 'extractor' | 'pod_studio';
+  setActiveView: (view: 'extractor' | 'pod_studio') => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -15,6 +17,8 @@ export const Header: React.FC<HeaderProps> = ({
   activeSidebarTab,
   setActiveSidebarTab,
   libraryCount,
+  activeView,
+  setActiveView,
 }) => {
   return (
     <header className="h-16 border-b border-[#252033] bg-[#0c0a13]/90 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between z-30 sticky top-0">
@@ -54,10 +58,40 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </div>
             <p className="text-[11px] text-[#9b94ab] hidden md:block leading-none mt-0.5">
-              Extract isolated 2D prints & typography off merchandise photos
+              Extract isolated 2D prints & create print-on-demand merchandise
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Center Mode Switcher: Extractor vs POD Studio */}
+      <div className="flex items-center bg-[#151221] p-1 rounded-xl border border-[#2b243d]">
+        <button
+          onClick={() => setActiveView('extractor')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+            activeView === 'extractor'
+              ? 'bg-gradient-to-r from-[#f4b8cf] to-[#c4b5fd] text-[#130f1e] shadow-md shadow-[#f4b8cf]/10 font-bold'
+              : 'text-[#9b92ae] hover:text-white'
+          }`}
+        >
+          <Wand2 className="w-3.5 h-3.5" />
+          <span>Graphic Extractor</span>
+        </button>
+
+        <button
+          onClick={() => setActiveView('pod_studio')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+            activeView === 'pod_studio'
+              ? 'bg-gradient-to-r from-[#ff007f] via-[#f4b8cf] to-[#c4b5fd] text-white shadow-md shadow-[#ff007f]/20 font-bold'
+              : 'text-[#9b92ae] hover:text-white'
+          }`}
+        >
+          <ShoppingBag className="w-3.5 h-3.5 text-[#f4b8cf]" />
+          <span>POD Merch Studio</span>
+          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-[#ff007f]/30 text-white font-mono uppercase">
+            Live
+          </span>
+        </button>
       </div>
 
       {/* Right controls / quick action tabs */}
@@ -101,3 +135,4 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
+

@@ -17,6 +17,7 @@ import { ExtractionControls } from './components/ExtractionControls';
 import { GraphicViewer } from './components/GraphicViewer';
 import { ExportBar } from './components/ExportBar';
 import { AnalysisPanel } from './components/AnalysisPanel';
+import { PodStudio } from './components/PodStudio';
 import {
   MerchGraphicItem,
   ExtractionMode,
@@ -26,9 +27,13 @@ import {
 import {
   urlToBase64,
   createTransparentCutout,
+  cropAndIsolateGraphic,
 } from './utils/imageProcessing';
 
 export default function App() {
+  // Navigation View: Extractor or POD Studio
+  const [activeView, setActiveView] = useState<'extractor' | 'pod_studio'>('extractor');
+
   // Sidebar state
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [activeSidebarTab, setActiveSidebarTab] = useState<'chat' | 'library'>('chat');
@@ -66,6 +71,7 @@ export default function App() {
   const [isExtracting, setIsExtracting] = useState<boolean>(false);
   const [extractionStep, setExtractionStep] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<MerchAnalysis | null>(null);
 
   // Save library changes to localStorage
@@ -145,6 +151,7 @@ export default function App() {
     if (!originalImage) return;
 
     setError(null);
+    setNotice(null);
     setIsExtracting(true);
     setExtractionStep('Analyzing merchandise surface & perspective...');
 
@@ -171,23 +178,42 @@ export default function App() {
 
       const data = await response.json();
 
-      if (!response.ok || !data.success || !data.extractedImageUrl) {
+      if (!response.ok || !data.success) {
         throw new Error(data.error || 'Failed to extract graphic');
       }
 
-      const extractedUrl = data.extractedImageUrl;
+      let extractedUrl: string | null = data.extractedImageUrl || null;
+
+      if (!extractedUrl && data.isFallback && data.boundingBox) {
+        setExtractionStep('Synthesizing high-precision artwork boundaries...');
+        extractedUrl = await cropAndIsolateGraphic(originalImage, data.boundingBox, {
+          garmentColor: data.garmentColor || backgroundStyle,
+          enhanceContrast: true,
+          paddingPercent: 0.03,
+        });
+
+        if (data.isQuotaExceeded) {
+          setNotice('✨ Isolated via Gemini Vision AI Segmentation (Active Quota Optimized)');
+        }
+      }
+
+      if (!extractedUrl) {
+        throw new Error('Could not isolate artwork from merchandise photo.');
+      }
+
       setExtractedImage(extractedUrl);
 
       // Generate initial transparent cutout
       setExtractionStep('Synthesizing alpha transparency cutout...');
+      let finalTransUrl: string | null = null;
       try {
-        const transUrl = await createTransparentCutout(
+        finalTransUrl = await createTransparentCutout(
           extractedUrl,
           backgroundStyle === 'dark' ? 'dark' : 'white',
           threshold,
           feather
         );
-        setTransparentImage(transUrl);
+        setTransparentImage(finalTransUrl);
       } catch (tErr) {
         console.warn('Transparency auto cutout error:', tErr);
       }
@@ -199,7 +225,7 @@ export default function App() {
         createdAt: Date.now(),
         originalImage: originalImage,
         extractedImage: extractedUrl,
-        transparentImage: transparentImage,
+        transparentImage: finalTransUrl,
         analysis,
         extractionMode: mode,
         customPrompt,
@@ -290,6 +316,8 @@ export default function App() {
         activeSidebarTab={activeSidebarTab}
         setActiveSidebarTab={setActiveSidebarTab}
         libraryCount={library.length}
+        activeView={activeView}
+        setActiveView={setActiveView}
       />
 
       {/* Main Workspace Layout with Collapsible Sidebar */}
@@ -309,7 +337,7 @@ export default function App() {
           }}
         />
 
-        {/* Center Google Flow style Stage / Node Canvas */}
+        {/* Center Main Stage */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-[#161220] flex flex-col items-center">
           <div className="w-full max-w-6xl space-y-6">
             {/* Error Banner */}
@@ -328,139 +356,201 @@ export default function App() {
               </div>
             )}
 
-            {/* Stage Flow Header Banner */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#2b243b] pb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-[#f4b8cf] uppercase tracking-widest font-semibold">
-                    Merchandise Graphic Studio
-                  </span>
-                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#c4b5fd]/15 text-[#e9d5ff] border border-[#c4b5fd]/30">
-                    Flow Node Pipeline
-                  </span>
+            {/* Notice Banner */}
+            {notice && (
+              <div className="p-3.5 rounded-2xl bg-[#28203c]/90 border border-[#f4b8cf]/40 text-[#ffd6e8] text-xs sm:text-sm flex items-center justify-between gap-3 shadow-md shadow-[#f4b8cf]/5">
+                <div className="flex items-center gap-2.5">
+                  <Sparkles className="w-4 h-4 text-[#f4b8cf] flex-shrink-0" />
+                  <span>{notice}</span>
                 </div>
-                <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white mt-1">
-                  Extract Clean 2D Graphics Off Merchandise
-                </h2>
-              </div>
-
-              {originalImage && (
                 <button
-                  onClick={handleReset}
-                  className="self-start sm:self-auto text-xs text-[#a49bb5] hover:text-white px-3 py-1.5 rounded-xl bg-[#201a2d] hover:bg-[#2c243d] border border-[#352b49] transition-all flex items-center gap-1.5"
+                  onClick={() => setNotice(null)}
+                  className="px-2.5 py-0.5 rounded-lg bg-[#3b2f56] hover:bg-[#4b3c6e] text-white text-xs"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>New Extraction</span>
+                  Dismiss
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
-            {/* Node Flow Grid: Input & Extraction Parameters */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-              {/* Step 1 Node: Merchandise Source Card */}
-              <div className="lg:col-span-6 rounded-2xl bg-[#1a1526] border border-[#342a48] p-4 sm:p-5 flex flex-col shadow-xl relative overflow-hidden">
-                <div className="flex items-center justify-between mb-3.5 border-b border-[#292039] pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-[#f4b8cf]/20 text-[#f4b8cf] text-xs font-mono font-bold flex items-center justify-center border border-[#f4b8cf]/30">
-                      1
-                    </span>
-                    <h3 className="text-sm font-bold text-white">Merchandise Source</h3>
+            {/* POD Studio View */}
+            {activeView === 'pod_studio' ? (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#2b243b] pb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono text-[#ff007f] uppercase tracking-widest font-semibold">
+                        Print on Demand Engine
+                      </span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#f4b8cf]/15 text-[#ffd6e8] border border-[#f4b8cf]/30">
+                        Printful & Printify Sync
+                      </span>
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white mt-1">
+                      Merchandise Product Creator & Mockups
+                    </h2>
                   </div>
+
+                  <button
+                    onClick={() => setActiveView('extractor')}
+                    className="self-start sm:self-auto text-xs text-[#a49bb5] hover:text-white px-3 py-1.5 rounded-xl bg-[#201a2d] hover:bg-[#2c243d] border border-[#352b49] transition-all flex items-center gap-1.5"
+                  >
+                    <Wand2 className="w-3.5 h-3.5 text-[#f4b8cf]" />
+                    <span>Back to Extractor</span>
+                  </button>
+                </div>
+
+                <PodStudio
+                  graphicItem={activeItem}
+                  extractedImageUrl={extractedImage}
+                  transparentImageUrl={transparentImage}
+                />
+              </div>
+            ) : (
+              /* Graphic Extractor Flow View */
+              <>
+                {/* Stage Flow Header Banner */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#2b243b] pb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono text-[#f4b8cf] uppercase tracking-widest font-semibold">
+                        Merchandise Graphic Studio
+                      </span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#c4b5fd]/15 text-[#e9d5ff] border border-[#c4b5fd]/30">
+                        Flow Node Pipeline
+                      </span>
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white mt-1">
+                      Extract Clean 2D Graphics Off Merchandise
+                    </h2>
+                  </div>
+
                   {originalImage && (
-                    <span className="text-[10px] text-[#c4b5fd] font-mono flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3 text-[#c4b5fd]" /> Loaded
-                    </span>
+                    <button
+                      onClick={handleReset}
+                      className="self-start sm:self-auto text-xs text-[#a49bb5] hover:text-white px-3 py-1.5 rounded-xl bg-[#201a2d] hover:bg-[#2c243d] border border-[#352b49] transition-all flex items-center gap-1.5"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>New Extraction</span>
+                    </button>
                   )}
                 </div>
 
-                <MerchandiseUploader
-                  currentImage={originalImage}
-                  onImageSelected={handleImageSelected}
-                  onReset={handleReset}
-                  isProcessing={isExtracting}
-                />
-              </div>
+                {/* Node Flow Grid: Input & Extraction Parameters */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                  {/* Step 1 Node: Merchandise Source Card */}
+                  <div className="lg:col-span-6 rounded-2xl bg-[#1a1526] border border-[#342a48] p-4 sm:p-5 flex flex-col shadow-xl relative overflow-hidden">
+                    <div className="flex items-center justify-between mb-3.5 border-b border-[#292039] pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-[#f4b8cf]/20 text-[#f4b8cf] text-xs font-mono font-bold flex items-center justify-center border border-[#f4b8cf]/30">
+                          1
+                        </span>
+                        <h3 className="text-sm font-bold text-white">Merchandise Source</h3>
+                      </div>
+                      {originalImage && (
+                        <span className="text-[10px] text-[#c4b5fd] font-mono flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-[#c4b5fd]" /> Loaded
+                        </span>
+                      )}
+                    </div>
 
-              {/* Step 2 Node: Extraction Engine Controls */}
-              <div className="lg:col-span-6 rounded-2xl bg-[#1a1526] border border-[#342a48] p-4 sm:p-5 flex flex-col shadow-xl relative overflow-hidden">
-                <div className="flex items-center justify-between mb-3.5 border-b border-[#292039] pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-[#c4b5fd]/20 text-[#c4b5fd] text-xs font-mono font-bold flex items-center justify-center border border-[#c4b5fd]/30">
-                      2
-                    </span>
-                    <h3 className="text-sm font-bold text-white">AI Extraction Engine</h3>
+                    <MerchandiseUploader
+                      currentImage={originalImage}
+                      onImageSelected={handleImageSelected}
+                      onReset={handleReset}
+                      isProcessing={isExtracting}
+                    />
                   </div>
-                  <span className="text-[10px] text-[#f4b8cf] font-mono">Gemini Vision</span>
+
+                  {/* Step 2 Node: Extraction Engine Controls */}
+                  <div className="lg:col-span-6 rounded-2xl bg-[#1a1526] border border-[#342a48] p-4 sm:p-5 flex flex-col shadow-xl relative overflow-hidden">
+                    <div className="flex items-center justify-between mb-3.5 border-b border-[#292039] pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-[#c4b5fd]/20 text-[#c4b5fd] text-xs font-mono font-bold flex items-center justify-center border border-[#c4b5fd]/30">
+                          2
+                        </span>
+                        <h3 className="text-sm font-bold text-white">AI Extraction Engine</h3>
+                      </div>
+                      <span className="text-[10px] text-[#f4b8cf] font-mono">Gemini Vision</span>
+                    </div>
+
+                    <ExtractionControls
+                      mode={mode}
+                      setMode={setMode}
+                      customPrompt={customPrompt}
+                      setCustomPrompt={setCustomPrompt}
+                      backgroundStyle={backgroundStyle}
+                      setBackgroundStyle={setBackgroundStyle}
+                      onExtract={handleExtract}
+                      isExtracting={isExtracting}
+                      canExtract={!!originalImage}
+                    />
+
+                    {/* Extraction In-Progress Banner */}
+                    {isExtracting && (
+                      <div className="mt-4 p-3.5 rounded-xl bg-[#221a33] border border-[#f4b8cf]/40 shadow-lg flex items-center gap-3">
+                        <div className="w-6 h-6 rounded-full border-2 border-[#f4b8cf] border-t-transparent animate-spin flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-white">
+                            {extractionStep || 'Processing merchandise graphic...'}
+                          </p>
+                          <p className="text-[10px] text-[#c4b5fd] truncate mt-0.5">
+                            Generating high-fidelity 2D graphic output
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <ExtractionControls
-                  mode={mode}
-                  setMode={setMode}
-                  customPrompt={customPrompt}
-                  setCustomPrompt={setCustomPrompt}
-                  backgroundStyle={backgroundStyle}
-                  setBackgroundStyle={setBackgroundStyle}
-                  onExtract={handleExtract}
-                  isExtracting={isExtracting}
-                  canExtract={!!originalImage}
-                />
+                {/* AI Graphic Intelligence Analysis Panel */}
+                {(analysis || isAnalyzing) && (
+                  <AnalysisPanel analysis={analysis} isLoading={isAnalyzing} />
+                )}
 
-                {/* Extraction In-Progress Banner */}
-                {isExtracting && (
-                  <div className="mt-4 p-3.5 rounded-xl bg-[#221a33] border border-[#f4b8cf]/40 shadow-lg flex items-center gap-3">
-                    <div className="w-6 h-6 rounded-full border-2 border-[#f4b8cf] border-t-transparent animate-spin flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-white">
-                        {extractionStep || 'Processing merchandise graphic...'}
-                      </p>
-                      <p className="text-[10px] text-[#c4b5fd] truncate mt-0.5">
-                        Generating high-fidelity 2D graphic output
-                      </p>
+                {/* Step 3 Node: Extracted Graphic Output & Download Studio */}
+                {extractedImage && (
+                  <div className="space-y-4 pt-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-[#f4b8cf] text-black text-xs font-mono font-bold flex items-center justify-center">
+                        3
+                      </span>
+                      <h3 className="text-base font-bold text-white">
+                        Extracted Graphic Studio & Downloads
+                      </h3>
                     </div>
+
+                    {/* Graphic Interactive Viewer */}
+                    <GraphicViewer
+                      originalImage={originalImage!}
+                      extractedImage={extractedImage}
+                      transparentImage={transparentImage}
+                      bgPreview={bgPreview}
+                      setBgPreview={setBgPreview}
+                      threshold={threshold}
+                      setThreshold={setThreshold}
+                      feather={feather}
+                      setFeather={setFeather}
+                      isApplyingTransparency={isApplyingTransparency}
+                      onApplyTransparency={handleApplyTransparency}
+                    />
+
+                    {/* Download and Export Bar */}
+                    <ExportBar
+                      extractedImage={extractedImage}
+                      transparentImage={transparentImage}
+                      graphicTitle={activeItem?.title || 'merchandise-graphic'}
+                      onOpenPodStudio={() => setActiveView('pod_studio')}
+                    />
+
+                    {/* Embedded POD Studio preview below extractor for instant creation */}
+                    <PodStudio
+                      graphicItem={activeItem}
+                      extractedImageUrl={extractedImage}
+                      transparentImageUrl={transparentImage}
+                    />
                   </div>
                 )}
-              </div>
-            </div>
-
-            {/* AI Graphic Intelligence Analysis Panel */}
-            {(analysis || isAnalyzing) && (
-              <AnalysisPanel analysis={analysis} isLoading={isAnalyzing} />
-            )}
-
-            {/* Step 3 Node: Extracted Graphic Output & Download Studio */}
-            {extractedImage && (
-              <div className="space-y-4 pt-2">
-                <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-[#f4b8cf] text-black text-xs font-mono font-bold flex items-center justify-center">
-                    3
-                  </span>
-                  <h3 className="text-base font-bold text-white">
-                    Extracted Graphic Studio & Downloads
-                  </h3>
-                </div>
-
-                {/* Graphic Interactive Viewer */}
-                <GraphicViewer
-                  originalImage={originalImage!}
-                  extractedImage={extractedImage}
-                  transparentImage={transparentImage}
-                  bgPreview={bgPreview}
-                  setBgPreview={setBgPreview}
-                  threshold={threshold}
-                  setThreshold={setThreshold}
-                  feather={feather}
-                  setFeather={setFeather}
-                  isApplyingTransparency={isApplyingTransparency}
-                  onApplyTransparency={handleApplyTransparency}
-                />
-
-                {/* Download and Export Bar */}
-                <ExportBar
-                  extractedImage={extractedImage}
-                  transparentImage={transparentImage}
-                  graphicTitle={activeItem?.title || 'merchandise-graphic'}
-                />
-              </div>
+              </>
             )}
           </div>
         </main>

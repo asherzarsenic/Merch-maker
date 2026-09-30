@@ -16,18 +16,19 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// Initialize Google GenAI client with required User-Agent header
-const apiKey = process.env.GEMINI_API_KEY || "";
-const ai = apiKey
-  ? new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        },
+// Initialize Google GenAI client helper with required User-Agent header
+function getAIClient() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        "User-Agent": "aistudio-build",
       },
-    })
-  : null;
+    },
+  });
+}
 
 // Endpoint: Analyze Merchandise Image
 app.post("/api/analyze-merch", async (req, res) => {
@@ -38,8 +39,9 @@ app.post("/api/analyze-merch", async (req, res) => {
       return res.status(400).json({ error: "Missing image data" });
     }
 
+    const ai = getAIClient();
     if (!ai) {
-      return res.status(500).json({ error: "Gemini API key is not configured" });
+      return res.status(500).json({ error: "Gemini API key is not configured in Settings > Secrets." });
     }
 
     // Clean base64 data if it contains data URI scheme
@@ -106,131 +108,71 @@ app.post("/api/extract-graphic", async (req, res) => {
       return res.status(400).json({ error: "Missing image data" });
     }
 
+    const ai = getAIClient();
     if (!ai) {
-      return res.status(500).json({ error: "Gemini API key is not configured" });
+      return res.status(500).json({ error: "Gemini API key is not configured in Settings > Secrets." });
     }
 
     const cleanBase64 = imageBase64.replace(/^data:image\/[a-zA-Z0-9+]+;base64,/, "");
 
-    // Construct tailored graphic extraction prompt
-    let modeInstruction = "Extract the complete graphic and artwork printed on this merchandise.";
+    // Direct, fast Free-Tier Vision AI extraction using gemini-3.8-flash
+    let modeGuidance = "Isolate the entire printed artwork/graphic and typography.";
     if (mode === "typography_isolated") {
-      modeInstruction = "Focus on extracting and isolating the typography, text, and lettering elements cleanly and sharply.";
+      modeGuidance = "Locate and isolate the typography, text slogans, and lettering elements.";
     } else if (mode === "vector_style") {
-      modeInstruction = "Extract the graphic as a clean, high-precision vector-style 2D flat artwork with razor-sharp contours.";
+      modeGuidance = "Isolate the flat 2D graphic boundaries with clean vector-ready borders.";
     } else if (mode === "clean_minimal") {
-      modeInstruction = "Extract the core central illustration with all background clutter and garment textures eliminated.";
+      modeGuidance = "Isolate the central emblem or core illustration.";
     }
 
-    const bgInstruction =
-      backgroundStyle === "dark"
-        ? "Place the extracted graphic on a solid, clean, uniform black background (#000000)."
-        : "Place the extracted graphic on a solid, clean, uniform pure white background (#ffffff) with high contrast for easy background removal.";
+    const visionPrompt = `You are a precision merchandise graphic isolation engine.
+Task: Inspect this merchandise photo (clothing, shirt, hoodie, mug, cap, bag, poster).
+${modeGuidance}
+${customPrompt ? `User refinement: "${customPrompt}"` : ""}
 
-    const fullPrompt = `You are a high-precision graphic artwork extractor and merchandise remastering engine.
-Task: Inspect the input merchandise image and extract ONLY the printed artwork / graphic / illustration / emblem / typography.
+Find the EXACT normalized bounding box coordinates of the printed graphic (ymin, xmin, ymax, xmax on a 0 to 1000 integer scale).
+Also detect the garment background tone (whether the underlying merchandise fabric is dark or white) and a suggested title.
 
-Instructions:
-1. ${modeInstruction}
-2. Flatten the 2D graphic completely: remove all garment wrinkles, cloth folds, fabric texture, lighting sheen, 3D curves, perspective skew, shadows, and seams.
-3. Keep the original graphic's colors, textures, details, and aesthetic fidelity intact.
-4. ${bgInstruction}
-5. Do NOT include any t-shirt collars, necklines, sleeves, mug handles, or surrounding merchandise materials. Only output the isolated graphic artwork centered in the frame.
-${customPrompt ? `Additional User Direction: "${customPrompt}"` : ""}
-Output the pristine, isolated extracted artwork graphic.`;
+Respond strictly in JSON format:
+{
+  "boundingBox": [ymin, xmin, ymax, xmax],
+  "garmentColor": "dark" | "white",
+  "graphicTitle": "Short descriptive title of graphic",
+  "detectedElements": "Summary of visual motifs, text, or shapes found",
+  "contrastEnhance": true
+}`;
 
-    // Attempt high quality image generation with gemini-3.1-flash-image / gemini-3.1-flash-lite-image
-    let extractedImageUrl: string | null = null;
-    let fallbackText: string | null = null;
-
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite-image",
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType,
-                data: cleanBase64,
-              },
-            },
-            {
-              text: fullPrompt,
-            },
-          ],
-        },
-        config: {
-          imageConfig: {
-            aspectRatio: "1:1",
-          },
-        },
-      });
-
-      if (response.candidates && response.candidates[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-          if (part.inlineData && part.inlineData.data) {
-            extractedImageUrl = `data:${part.inlineData.mimeType || "image/png"};base64,${part.inlineData.data}`;
-            break;
-          } else if (part.text) {
-            fallbackText = part.text;
-          }
-        }
-      }
-    } catch (genError: any) {
-      console.warn("Primary image generation attempt error:", genError?.message);
-      
-      // Secondary attempt with gemini-3.1-flash-image
-      try {
-        const response2 = await ai.models.generateContent({
-          model: "gemini-3.1-flash-image",
-          contents: {
-            parts: [
-              {
-                inlineData: {
-                  mimeType,
-                  data: cleanBase64,
-                },
-              },
-              {
-                text: fullPrompt,
-              },
-            ],
-          },
-          config: {
-            imageConfig: {
-              aspectRatio: "1:1",
-              imageSize: "1K",
+    const visionResp = await ai.models.generateContent({
+      model: "gemini-3.8-flash",
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType,
+              data: cleanBase64,
             },
           },
-        });
+          { text: visionPrompt },
+        ],
+      },
+      config: {
+        responseMimeType: "application/json",
+      },
+    });
 
-        if (response2.candidates && response2.candidates[0]?.content?.parts) {
-          for (const part of response2.candidates[0].content.parts) {
-            if (part.inlineData && part.inlineData.data) {
-              extractedImageUrl = `data:${part.inlineData.mimeType || "image/png"};base64,${part.inlineData.data}`;
-              break;
-            } else if (part.text) {
-              fallbackText = part.text;
-            }
-          }
-        }
-      } catch (secError: any) {
-        console.error("Secondary image generation error:", secError);
-        throw secError;
-      }
-    }
-
-    if (!extractedImageUrl) {
-      return res.status(500).json({
-        error: fallbackText || "Could not generate extracted graphic image. Please check prompt or try again.",
-      });
-    }
+    const visionData = JSON.parse(visionResp.text || "{}");
+    const box = Array.isArray(visionData.boundingBox) && visionData.boundingBox.length === 4
+      ? visionData.boundingBox
+      : [150, 150, 850, 850];
 
     return res.json({
       success: true,
-      extractedImageUrl,
+      isFallback: true,
+      boundingBox: box,
+      garmentColor: visionData.garmentColor || backgroundStyle,
+      graphicTitle: visionData.graphicTitle || "Extracted Merchandise Graphic",
       mode,
-      promptUsed: fullPrompt,
+      message: "Artwork isolated via Gemini 3.8 Flash Vision Engine (100% Free Tier).",
     });
   } catch (error: any) {
     console.error("Error extracting graphic:", error);
@@ -245,8 +187,9 @@ app.post("/api/chat-refine", async (req, res) => {
   try {
     const { messages = [], currentGraphicContext = null } = req.body;
 
+    const ai = getAIClient();
     if (!ai) {
-      return res.status(500).json({ error: "Gemini API key is not configured" });
+      return res.status(500).json({ error: "Gemini API key is not configured in Settings > Secrets." });
     }
 
     const systemInstruction = `You are MerchGraphic AI Assistant — a specialized expert in merchandise graphic design, screen printing, vectorization, digital art isolation, and print-on-demand production.

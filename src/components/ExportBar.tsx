@@ -8,6 +8,7 @@ import {
   Layers,
   Printer,
   ChevronDown,
+  ShoppingBag,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { downloadGraphicFile, copyImageToClipboard } from '../utils/imageProcessing';
@@ -16,12 +17,14 @@ interface ExportBarProps {
   extractedImage: string;
   transparentImage: string | null;
   graphicTitle: string;
+  onOpenPodStudio?: () => void;
 }
 
 export const ExportBar: React.FC<ExportBarProps> = ({
   extractedImage,
   transparentImage,
   graphicTitle,
+  onOpenPodStudio,
 }) => {
   const [format, setFormat] = useState<'png' | 'jpeg' | 'webp' | 'svg'>('png');
   const [scale, setScale] = useState<number>(1);
@@ -125,8 +128,19 @@ export const ExportBar: React.FC<ExportBarProps> = ({
         )}
       </div>
 
-      {/* Right Download & Copy Buttons */}
+      {/* Right Download, Copy & POD Studio Buttons */}
       <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+        {/* Open in POD Studio */}
+        {onOpenPodStudio && (
+          <button
+            onClick={onOpenPodStudio}
+            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-[#ff007f]/20 to-[#c4b5fd]/20 hover:from-[#ff007f]/30 hover:to-[#c4b5fd]/30 border border-[#ff007f]/40 text-[#ffd6e8] text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+          >
+            <ShoppingBag className="w-4 h-4 text-[#ff007f]" />
+            <span>Open in POD Studio</span>
+          </button>
+        )}
+
         {/* Copy to Clipboard */}
         <button
           onClick={handleCopy}
@@ -163,3 +177,4 @@ export const ExportBar: React.FC<ExportBarProps> = ({
     </div>
   );
 };
+
