@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-dark: #0a090e;
+    --bg-card: #121019;
+    --bg-card-subtle: #171420;
+    --border-pink: rgba(244, 184, 207, 0.2);
+    --border-lilac: rgba(196, 181, 253, 0.2);
+    --accent-pink: #f4b8cf;
+    --accent-pink-light: #ffd6e8;
+    --accent-lilac: #c4b5fd;
+    --accent-lilac-light: #e9d5ff;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #08070c;
+    color: #f3f3f6;
+  }
+}
+
+/* Checkered background pattern for transparent graphics */
+.bg-transparency-grid {
+  background-image: 
+    linear-gradient(45deg, #181622 25%, transparent 25%), 
+    linear-gradient(-45deg, #181622 25%, transparent 25%), 
+    linear-gradient(45deg, transparent 75%, #181622 75%), 
+    linear-gradient(-45deg, transparent 75%, #181622 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+  background-color: #0f0e15;
+}
+
+.bg-transparency-grid-light {
+  background-image: 
+    linear-gradient(45deg, #e2e2e8 25%, transparent 25%), 
+    linear-gradient(-45deg, #e2e2e8 25%, transparent 25%), 
+    linear-gradient(45deg, transparent 75%, #e2e2e8 75%), 
+    linear-gradient(-45deg, transparent 75%, #e2e2e8 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+  background-color: #f8f8fa;
+}
+
+/* Subtle glow effects */
+.glow-pink {
+  box-shadow: 0 0 25px -5px rgba(244, 184, 207, 0.25);
+}
+
+.glow-lilac {
+  box-shadow: 0 0 25px -5px rgba(196, 181, 253, 0.25);
+}
+
+.glow-subtle {
+  box-shadow: 0 0 35px -8px rgba(244, 184, 207, 0.12), 0 0 20px -6px rgba(196, 181, 253, 0.12);
+}
+
+/* Custom delicate scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0d0c13;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #272338;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3e3859;
+}

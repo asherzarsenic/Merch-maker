@@ -1,0 +1,7 @@
+{
+  "name": "MerchGraphic AI - Merchandise Graphic Extractor",
+  "description": "Extract crisp isolated graphics, prints, and typography from merchandise photos using Gemini AI into downloadable transparent and high-res images.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
